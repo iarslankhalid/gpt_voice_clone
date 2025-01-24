@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS AI Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #0ff;
+            --secondary-color: #033;
+            --background-color: #011;
+            --text-color: #0ff;
+            --system-color: #ff4444;
+            --user-color: #00ffff;
+            --ai-color: #00cccc;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Orbitron', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background-color: rgba(0, 51, 51, 0.8);
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 2px solid var(--primary-color);
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            font-weight: 700;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+            letter-spacing: 2px;
+        }
+
+        #start {
+            width: 100%;
+            padding: 15px;
+            background-color: var(--primary-color);
+            color: var(--secondary-color);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #start:hover {
+            background-color: #7fffd4;
+            transform: scale(1.05);
+        }
+
+        .chat {
+            height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+            border: 1px solid var(--primary-color);
+            border-radius: 10px;
+            padding: 15px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary-color) var(--secondary-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chat::-webkit-scrollbar-track {
+            background: var(--secondary-color);
+        }
+
+        .chat::-webkit-scrollbar-thumb {
+            background-color: var(--primary-color);
+            border-radius: 20px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            width: 100%;
+        }
+
+        .message.system {
+            justify-content: center;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.ai {
+            justify-content: flex-start;
+        }
+
+        .message-content {
+            max-width: 80%;
+            padding: 10px;
+            border-radius: 10px;
+            word-break: break-word;
+            border: 1px solid;
+        }
+
+        .system .message-content {
+            background-color: rgba(255, 68, 68, 0.2);
+            color: var(--system-color);
+            border-color: var(--system-color);
+        }
+
+        .user .message-content {
+            background-color: rgba(0, 255, 255, 0.2);
+            color: var(--user-color);
+            border-color: var(--user-color);
+        }
+
+        .ai .message-content {
+            background-color: rgba(0, 204, 204, 0.2);
+            color: var(--ai-color);
+            border-color: var(--ai-color);
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        #start.listening {
+            animation: pulse 1s infinite;
+            background-color: #ff4500;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>JARVIS AI</h1>
+        <button id="start">Start Speaking</button>
+        <div class="chat" id="chat"></div>
+    </div>
+
+    <script>
+        const startButton = document.getElementById("start");
+        const chatElement = document.getElementById("chat");
+        const synth = window.speechSynthesis;
+
+        let socket;
+        let recognition;
+        let isProcessingResponse = false;
+
+        function establishWebSocket() {
+            socket = new WebSocket("ws://127.0.0.1:8000/ws");
+
+            socket.onopen = () => {
+                addMessage("System", "Connection established. Ready to listen.", "system");
+                startButton.classList.add("listening");
+                startButton.textContent = "Listening...";
+                startListening();
+            };
+
+            socket.onmessage = (event) => {
+                const aiResponse = event.data;
+                addMessage("AI", aiResponse, "ai");
+
+                isProcessingResponse = true;
+                const utterance = new SpeechSynthesisUtterance(aiResponse);
+                utterance.rate = 0.9;
+                synth.speak(utterance);
+
+                utterance.onend = () => {
+                    setTimeout(() => {
+                        isProcessingResponse = false;
+                        startListening();
+                    }, 1000);
+                };
+            };
+
+            socket.onerror = (error) => {
+                addMessage("System", "Connection error. Reconnecting...", "system");
+                setTimeout(establishWebSocket, 2000);
+            };
+
+            socket.onclose = () => {
+                addMessage("System", "Connection closed. Reconnecting...", "system");
+                setTimeout(establishWebSocket, 2000);
+            };
+        }
+
+        function startListening() {
+            if (isProcessingResponse) return;
+
+            if (recognition) {
+                recognition.stop();
+            }
+
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = "en-US";
+            recognition.interimResults = false;
+
+            recognition.onstart = () => {
+                startButton.classList.add("listening");
+                startButton.textContent = "Listening...";
+            };
+
+            recognition.onresult = (event) => {
+                if (isProcessingResponse) return;
+                
+                const transcript = event.results[0][0].transcript.trim();
+                addMessage("User", transcript, "user");
+
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(transcript);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                if (!isProcessingResponse) {
+                    addMessage("System", "Speech recognition failed.", "system");
+                    startButton.classList.remove("listening");
+                    startButton.textContent = "Start Speaking";
+                    startListening();
+                }
+            };
+
+            recognition.onend = () => {
+                if (!isProcessingResponse) {
+                    startButton.classList.remove("listening");
+                    startButton.textContent = "Start Speaking";
+                    startListening();
+                }
+            };
+
+            recognition.start();
+        }
+
+        startButton.addEventListener("click", () => {
+            if (!socket || socket.readyState === WebSocket.CLOSED) {
+                establishWebSocket();
+            } else {
+                startListening();
+            }
+        });
+
+        function addMessage(sender, message, className) {
+            const messageWrapper = document.createElement("div");
+            messageWrapper.className = `message ${className}`;
+
+            const messageContent = document.createElement("div");
+            messageContent.className = "message-content";
+            messageContent.textContent = `${sender}: ${message}`;
+
+            messageWrapper.appendChild(messageContent);
+            chatElement.appendChild(messageWrapper);
+            chatElement.scrollTop = chatElement.scrollHeight;
+        }
+    </script>
+</body>
+</html>
